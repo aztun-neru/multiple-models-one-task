@@ -1,34 +1,60 @@
-# moa-mixture-of-agents
+# Mixture-of-Agents (MoA)
 
-A Hermes Agent skill describing the **Mixture-of-Agents (MoA)** pattern: decompose a task into expert roles, assign a *different* model to each expert, execute them via a dependency graph (parallel / sequential / hybrid), then judge + synthesize the result.
+**Stop asking one model to "pretend to be 3 people." Route each role to the model that's actually good at it — then judge the result before it ships.**
 
-## What it solves
+MoA decomposes a task into expert roles (researcher, coder, critic), assigns a *different* model to each, runs them in parallel through a dependency graph, and a judge + synthesizer produce the final answer.
 
-A single LLM role-playing several experts ("you are now 3 people") is just prompt engineering. MoA actually routes each sub-task to the model best suited for it — a coder model writes code, a strong generalist critiques it, a reasoner synthesizes — then a judge checks the output before it reaches the user.
+## Why it matters
 
-## Core idea
+A single LLM role-playing multiple experts is still **one model with one blind spot**. When the "coder" and the "critic" are the same weights, the critic can't catch what the coder missed — they share the same blind spot.
+
+MoA makes the experts real:
 
 ```
-TASK
- ├── RESEARCH → reasoner-model
- ├── CODER    → coder-model
- ├── CRITIC   → strong-generalist
- └── SYNTH    → another-model
+                        TASK
+                          │
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+   RESEARCH          CODER            CRITIC
+  reasoner-model    coder-model    strong-generalist
+        │                 │                 │
+        └─────────────────┼─────────────────┘
+                          ▼
+                       JUDGE
+                          │
+                          ▼
+                      SYNTHESIS → final answer
 ```
 
-Model assignment is **per expert**, not global.
+## Before vs after (measured)
+
+| | One model pretending | MoA (coder + critic + judge) |
+|---|---|---|
+| Code review | nobody checks the code | critic finds real bugs before you ship |
+| Blind spots | one model's weakness = your bug | a different model catches it |
+| Example | `parseClusterConfig` passed fields but allowed duplicate machines + reserved IPs | critic flagged 8 issues → synthesis fixed them → production-grade |
+
+## Real example
+
+Task: `parseClusterConfig(json)` — parse + validate a cluster config.
+
+1. **Coder** (a local Qwen 27B) wrote clean field validation in 3s — but no uniqueness check, no reserved-IP rejection.
+2. **Critic** (a different model) found 8 concrete issues: duplicate names/IPs allowed, `0.0.0.0`/`127.0.0.1` accepted as machine addresses, array-as-element giving a misleading error.
+3. **Synthesis** produced the fixed version.
+
+**The combination beat either model alone** — the coder's speed plus the critic's different blind spot = better than one model doing both jobs.
 
 ## Contents
 
-- `SKILL.md` — the full skill: architecture (compose + runtime layers), the per-expert assignment pattern, execution modes, pitfalls, and a minimal integration skeleton.
+- `SKILL.md` — the full skill (architecture, per-expert assignment, execution modes, pitfalls)
+- `references/diagram-prompt.md` — a prompt to generate the diagram with a local image model (SDXL/Flux/ComfyUI)
 
 ## Install
 
 ```bash
-# copy into your Hermes skills directory
-cp SKILL.md ~/.hermes/skills/moa-mixture-of-agents/
+cp -r . ~/.hermes/skills/mixture-of-agents/
 ```
 
 ## License
 
-MIT — see the parent project (NERU) for details.
+MIT

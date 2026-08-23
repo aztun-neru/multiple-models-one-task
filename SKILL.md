@@ -1,64 +1,69 @@
 ---
-name: moa-mixture-of-agents
-description: Mixture-of-Agents (MoA) composition — decompose a task into expert roles, assign a DIFFERENT model to each expert, execute via a dependency graph (parallel/sequential/hybrid), then judge + synthesize. Use when you need multiple specialized models (coder, researcher, critic) collaborating on one task, instead of a single model role-playing several experts.
+name: mixture-of-agents
+description: Mixture-of-Agents (MoA) — route one task through MULTIPLE specialized models (a coder model writes code, a strong generalist critiques it, a reasoner synthesizes), each doing what it's best at, then a judge checks before it reaches the user. Turns "one model pretending to be N experts" into genuinely parallel per-expert model assignment. Use when a task benefits from different models collaborating instead of a single model role-playing.
 ---
 
-# MoA — Mixture-of-Agents Composition
+# Mixture-of-Agents (MoA)
 
-## What it is
-MoA runs MULTIPLE models as specialized experts on one task, instead of one model pretending to be several roles. Each expert gets its OWN model (a coder expert runs a coding model, a critic runs a strong generalist), experts can depend on each other, and a judge + synthesizer combine their outputs into one answer.
+## What it solves, and why it matters
 
-The key distinction from "one model + prompt engineering":
-- MoA = **different models per role**, genuinely parallel, then judged + synthesized.
-- Fake MoA = one model role-playing N experts (that's just a long prompt, no value).
+A single LLM told to "be 3 people" is still one model with one set of strengths and one set of blind spots — the "experts" are just text. MoA makes the experts *real*: each role runs on the model that's actually good at that role, and a separate judge checks the result before it's delivered.
 
-## When to use
-- A task benefits from genuinely different models (coder + researcher + critic) working in parallel.
-- You have heterogeneous models (a fast coder + a strong reasoner) and want to route each sub-task to the best one.
-- You want a defensible "judge" step that checks the experts' work before synthesis.
+The concrete payoff (measured in practice):
+
+| | Single model | MoA (coder + critic + judge) |
+|---|---|---|
+| Code correctness | coder writes, nobody checks | critic finds real bugs before you ship |
+| Model weaknesses | one model's blind spot = your bug | a different model catches what the coder missed |
+| Example result | `parseClusterConfig` passed fields but allowed duplicate machines + reserved IPs | critic flagged 8 issues → synthesis produced production-grade validation |
+
+## Before vs after
+
+**Before (fake MoA):**
+```
+TASK └── one model └── "act as 4 experts" (one blind spot, one bias, one hallucination)
+```
+
+**After (real MoA):**
+```
+                        TASK
+                          │  (Planner decomposes)
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+   RESEARCH          CODER            CRITIC
+  reasoner-model    coder-model    strong-generalist
+        │                 │                 │
+        └─────────────────┼─────────────────┘
+                          ▼
+                       JUDGE   ← checks against the task
+                          │
+                          ▼
+                      SYNTHESIS → final answer
+```
+
+Each arrow is a genuinely different model. Dependencies (`dependsOn`) and priority control order; independent experts run in parallel.
 
 ## Architecture
 
-### Compose layer
-| Module | Responsibility |
-|---|---|
-| Planner | Decompose the task into expert roles + per-role instructions |
-| Expert Registry | Declare experts (id, role, `allowedModels`, `enabled`) |
-| Model Assignment | Map each expert → a specific model (**per-expert**, not global) |
-| Dependency Graph | Order experts via `dependsOn` + `priority` |
-| Execution | parallel / sequential / hybrid (dependency-respecting) |
-| Judge | Evaluate expert outputs against the task |
-| Synthesis | Combine judged outputs into one final answer |
-| Policy / Safety | Guardrails: allowed models, disabled experts, cycle detection |
-| Plan Versioning | Version the composition plan (experiment store) |
-| Observability | Emit `expert-start`/`expert-end`/`composition-error` + `runId` |
-| Evaluation | Test harness + feedback loop for optimization |
+**Compose layer**
+- **Planner** — decompose the task into expert roles + instructions
+- **Expert Registry** — declare experts (id, `allowedModels`, `enabled`)
+- **Model Assignment** — map each expert → a specific model (per-expert, not global)
+- **Dependency Graph** — order via `dependsOn` + `priority`
+- **Execution** — parallel / sequential / hybrid (dependency-respecting)
+- **Judge** — evaluate expert outputs against the task
+- **Synthesis** — combine judged outputs into one final answer
+- **Policy** — guardrails (allowed models, disabled experts, cycle detection)
+- **Plan Versioning / Observability / Evaluation** — experiments, `runId` events, test harness
 
-### Runtime layer
-| Module | Responsibility |
-|---|---|
-| Model Registry | Known models + capabilities/cost |
-| Resource Placement | Place models on GPU / RAM / CPU / cloud |
-| Auto GPU tuning | Choose quant + context per hardware |
-| Benchmarking | Measure tok/s + quality per model |
-| Backends | llama.cpp / Ollama / cloud API |
+**Runtime layer**
+- **Model Registry** — known models + capabilities/cost
+- **Resource Placement** — GPU / RAM / CPU / cloud
+- **Auto GPU tuning + Benchmarking** — quant/context per hardware, tok/s per model
+- **Backends** — llama.cpp / Ollama / cloud API
 
 ## Core pattern — per-expert model assignment
 
-```
-TASK
- ├── RESEARCH → reasoner-model
- ├── CODER    → coder-model
- ├── CRITIC   → strong-generalist
- └── SYNTH    → another-model
-```
-
-NOT:
-```
-TASK └── one model └── pretending to be 4 experts
-```
-
-A `CompositionPlan` captures this:
 ```ts
 const plan = {
   task: "Analyze the architecture and propose improvements.",
@@ -78,16 +83,18 @@ const plan = {
 }
 ```
 
-## Execution modes
-- **sequential** — run experts one by one (strict ordering).
-- **hybrid (dependency graph)** — respect `dependsOn`, run independent experts in parallel up to `maxParallelism`, order by `priority`. Detect cycles / missing dependencies and fail fast.
-
 ## Pitfalls
-- **Don't fake MoA with one model** — the value is genuinely different models per role; one model role-playing N experts is just prompt engineering.
-- **Validate before execute** — unknown expert, disabled expert, or model not in `allowedModels` → throw, don't run.
-- **Architecture ≠ implementation** — a complete module list doesn't mean it's wired into your orchestrator. Integrate + test before calling it done.
-- **Fact-check model output** — models hallucinate API/event names; the judge should verify against docs, not trust the experts.
-- **Heterogeneous models ≠ one sharded model** — each worker keeps its own model locally; you exchange prompts + results (KB of text), never weights.
+- **Don't fake MoA with one model** — role-playing N experts is prompt engineering, not MoA.
+- **Validate before execute** — unknown/disabled expert or model outside `allowedModels` → fail fast.
+- **Architecture ≠ implementation** — integrate with your existing orchestrator (Planner/Executor/Judge/Synthesizer), don't re-implement them.
+- **Fact-check model output** — the judge verifies against docs; experts hallucinate API names.
+- **Heterogeneous models ≠ one sharded model** — each worker keeps its own model locally; you exchange prompts/results (KB), never weights.
 
-## Minimal skeleton (integration points)
-The modules that must already exist in your orchestrator (don't re-implement them): Planner, ExpertExecutor, Judge, Synthesizer. MoA adds on top: Expert Registry, Model Assignment (per-expert), Dependency Graph executor, Observability, Evaluation. Integrate with the existing pieces rather than replacing them — otherwise you get two parallel implementations of the same mechanism.
+## Real example (coder → critic → judge)
+
+Task: `parseClusterConfig(json)` — parse + validate a cluster config.
+1. **Coder** (local Qwen 27B) produced clean field validation — but no uniqueness, no reserved-IP check.
+2. **Critic** (a different model) found 8 issues (duplicate names/IPs, `0.0.0.0`/`127.x` passing, array-as-element).
+3. **Synthesis** produced the fixed, production-grade version.
+
+Result: the combination beat either model alone — the coder's speed + the critic's different blind spot = better than one model doing both.
