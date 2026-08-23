@@ -30,6 +30,8 @@ A task enters through a **planner**, which decomposes it into roles. A typical d
                       SYNTHESIS → final answer
 ```
 
+![Multiple Models, One Task — architecture](diagram.svg)
+
 The experts do not run in a fixed order. Each expert declares its dependencies (`dependsOn`) and a priority, and the engine runs them in one of three modes: **sequential** (one after another), **parallel** (all at once), or **hybrid** (respect the dependencies, run everything independent in parallel up to a concurrency limit). A dependency cycle or a reference to a missing expert fails immediately rather than hanging.
 
 After the experts produce their answers, a **judge** evaluates each one against the original task — not against the other experts, but against what was actually asked. Only the answers that pass reach the **synthesis** step, which combines them into a single final answer. The judge is the gate: nothing reaches the user that did not pass.
