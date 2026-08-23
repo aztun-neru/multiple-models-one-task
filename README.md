@@ -1,14 +1,8 @@
-# Mixture-of-Agents (MoA)
+# Multiple Models, One Task
 
-**Stop asking one model to "pretend to be 3 people." Route each role to the model that's actually good at it — then judge the result before it ships.**
+**Run ONE task through MULTIPLE specialized models in parallel — a coder model writes code, a strong generalist critiques it, a reasoner synthesizes — then a judge checks before it reaches you.**
 
-MoA decomposes a task into expert roles (researcher, coder, critic), assigns a *different* model to each, runs them in parallel through a dependency graph, and a judge + synthesizer produce the final answer.
-
-## Why it matters
-
-A single LLM role-playing multiple experts is still **one model with one blind spot**. When the "coder" and the "critic" are the same weights, the critic can't catch what the coder missed — they share the same blind spot.
-
-MoA makes the experts real:
+A single LLM told to "act as coder, then reviewer, then judge" is still ONE model with ONE blind spot. When the coder and the reviewer are the same weights, the reviewer can't catch what the coder missed. This project makes the experts *real* — each role runs on the model actually good at that role.
 
 ```
                         TASK
@@ -26,37 +20,33 @@ MoA makes the experts real:
                       SYNTHESIS → final answer
 ```
 
-## Before vs after (measured)
+![diagram](diagram.svg)
 
-| | One model pretending | MoA (coder + critic + judge) |
+## The point
+
+| | One model doing everything | Multiple models + judge |
 |---|---|---|
-| Code review | nobody checks the code | critic finds real bugs before you ship |
+| Code review | nobody checks | critic finds real bugs before you ship |
 | Blind spots | one model's weakness = your bug | a different model catches it |
-| Example | `parseClusterConfig` passed fields but allowed duplicate machines + reserved IPs | critic flagged 8 issues → synthesis fixed them → production-grade |
 
-## Real example
-
-Task: `parseClusterConfig(json)` — parse + validate a cluster config.
-
-1. **Coder** (a local Qwen 27B) wrote clean field validation in 3s — but no uniqueness check, no reserved-IP rejection.
-2. **Critic** (a different model) found 8 concrete issues: duplicate names/IPs allowed, `0.0.0.0`/`127.0.0.1` accepted as machine addresses, array-as-element giving a misleading error.
-3. **Synthesis** produced the fixed version.
-
-**The combination beat either model alone** — the coder's speed plus the critic's different blind spot = better than one model doing both jobs.
+In one real run: a local coder model wrote clean validation, a second model found 8 problems it missed (duplicate machines, reserved IPs), synthesis fixed them. **The combination beat either model alone.**
 
 ## Contents
 
-- `SKILL.md` — the full skill (architecture, per-expert assignment, execution modes, pitfalls)
-- `references/diagram-prompt.md` — a prompt to generate the diagram with a local image model (SDXL/Flux/ComfyUI)
-- `diagram.svg` — ready-to-use dark SVG diagram (below)
+- `SKILL.md` — the full skill (context, concept, architecture, pitfalls, when-not-to-use, minimal example)
+- `src/` — reference TypeScript implementation (20 files, compiles with `tsc --noEmit` = 0 errors)
+- `diagram.svg` — dark SVG diagram
+- `docs.md` / `examples.md` / `tests.md` — architecture notes, usage examples, test cases (extracted raw)
 
-![Mixture-of-Agents diagram](diagram.svg)
-
-## Install
+## Install the skill
 
 ```bash
-cp -r . ~/.hermes/skills/mixture-of-agents/
+cp SKILL.md ~/.hermes/skills/multiple-models-one-task/
 ```
+
+## Verification request
+
+This is a draft re-assembled from a long design conversation. If you try it: does per-expert assignment actually beat a single model? Does the judge catch real bugs? Open an issue with your before/after.
 
 ## License
 

@@ -1,33 +1,21 @@
 ---
-name: mixture-of-agents
-description: Mixture-of-Agents (MoA) — route one task through MULTIPLE specialized models (a coder model writes code, a strong generalist critiques it, a reasoner synthesizes), each doing what it's best at, then a judge checks before it reaches the user. Turns "one model pretending to be N experts" into genuinely parallel per-expert model assignment. Use when a task benefits from different models collaborating instead of a single model role-playing.
+name: multiple-models-one-task
+description: Run ONE task through MULTIPLE specialized models in parallel — a coder model writes code, a strong generalist critiques it, a reasoner synthesizes — then a judge checks before it reaches you. Fixes the single-model blind spot: when one LLM does everything, its weaknesses are your bugs. Use when a task benefits from different models each doing what they're best at, instead of one model role-playing every role.
 ---
 
-# Mixture-of-Agents (MoA)
+# Multiple Models, One Task
 
-## What it solves, and why it matters
+## Context — why this exists
 
-A single LLM told to "be 3 people" is still one model with one set of strengths and one set of blind spots — the "experts" are just text. MoA makes the experts *real*: each role runs on the model that's actually good at that role, and a separate judge checks the result before it's delivered.
+A single LLM told to "act as a coder, then a reviewer, then a judge" is still ONE model with ONE set of strengths and ONE set of blind spots. When the "coder" and the "reviewer" are the same weights, the reviewer cannot catch what the coder missed — they share the same blind spot.
 
-The concrete payoff (measured in practice):
+This skill replaces that illusion with reality: each role runs on a different model that is genuinely good at that role.
 
-| | Single model | MoA (coder + critic + judge) |
-|---|---|---|
-| Code correctness | coder writes, nobody checks | critic finds real bugs before you ship |
-| Model weaknesses | one model's blind spot = your bug | a different model catches what the coder missed |
-| Example result | `parseClusterConfig` passed fields but allowed duplicate machines + reserved IPs | critic flagged 8 issues → synthesis produced production-grade validation |
+## Concept — how it works
 
-## Before vs after
-
-**Before (fake MoA):**
-```
-TASK └── one model └── "act as 4 experts" (one blind spot, one bias, one hallucination)
-```
-
-**After (real MoA):**
 ```
                         TASK
-                          │  (Planner decomposes)
+                          │   (Planner decomposes the task into roles)
         ┌─────────────────┼─────────────────┐
         ▼                 ▼                 ▼
    RESEARCH          CODER            CRITIC
@@ -35,34 +23,49 @@ TASK └── one model └── "act as 4 experts" (one blind spot, one bias,
         │                 │                 │
         └─────────────────┼─────────────────┘
                           ▼
-                       JUDGE   ← checks against the task
+                       JUDGE   ← checks each answer against the task
                           │
                           ▼
-                      SYNTHESIS → final answer
+                      SYNTHESIS → one final answer
 ```
 
-Each arrow is a genuinely different model. Dependencies (`dependsOn`) and priority control order; independent experts run in parallel.
+Model assignment is **per expert**: the coder expert is wired to a coding model, the critic to a strong generalist, the synthesizer to a reasoner. Independent experts run in parallel; dependencies (`dependsOn`) and `priority` control order.
 
-## Architecture
+## Benefit — example before/after (single run, not a benchmark)
 
-**Compose layer**
+| | One model doing everything | Multiple models + judge |
+|---|---|---|
+| Code review | nobody checks the code | critic finds real bugs before you ship |
+| Blind spots | one model's weakness = your bug | a different model catches it |
+| Real example | `parseClusterConfig` validated fields but allowed duplicate machines + reserved IPs | critic found 8 issues → synthesis fixed them → production-grade |
+
+In the measured run: a local coder model wrote clean field validation in seconds, a second model found 8 concrete problems the coder missed (duplicate names/IPs allowed, `0.0.0.0`/`127.x` accepted, array-as-element), and the synthesis produced the fixed version. **The combination beat either model alone.**
+
+## Architecture (what the code implements)
+
 - **Planner** — decompose the task into expert roles + instructions
-- **Expert Registry** — declare experts (id, `allowedModels`, `enabled`)
+- **Expert Registry** — declare experts (`allowedModels`, `enabled`)
 - **Model Assignment** — map each expert → a specific model (per-expert, not global)
-- **Dependency Graph** — order via `dependsOn` + `priority`
-- **Execution** — parallel / sequential / hybrid (dependency-respecting)
-- **Judge** — evaluate expert outputs against the task
-- **Synthesis** — combine judged outputs into one final answer
-- **Policy** — guardrails (allowed models, disabled experts, cycle detection)
-- **Plan Versioning / Observability / Evaluation** — experiments, `runId` events, test harness
+- **Dependency Graph** — order via `dependsOn` + `priority`; detect cycles
+- **Execution** — parallel / sequential / hybrid
+- **Judge** — evaluate outputs against the task
+- **Synthesis** — combine judged outputs into one answer
+- **Policy / Observability / Evaluation** — guardrails, `runId` events, test harness
 
-**Runtime layer**
-- **Model Registry** — known models + capabilities/cost
-- **Resource Placement** — GPU / RAM / CPU / cloud
-- **Auto GPU tuning + Benchmarking** — quant/context per hardware, tok/s per model
-- **Backends** — llama.cpp / Ollama / cloud API
+## Pitfalls
 
-## Core pattern — per-expert model assignment
+- **Don't fake it with one model** — role-playing N experts is prompt engineering, not this pattern.
+- **Validate before execute** — unknown/disabled expert or model outside `allowedModels` → fail fast.
+- **Fact-check outputs** — the judge verifies against docs; models hallucinate API names.
+- **Architecture ≠ implementation** — integrate with your existing orchestrator, don't re-implement it.
+
+## When NOT to use it
+
+- **Single-step, low-risk tasks** — one model is enough and the overhead (multiple calls, latency, cost) isn't justified.
+- **Sensitive data without isolation** — routing PII across several models multiplies exposure; keep such tasks on one trusted model.
+- **Tight budget** — every expert is a separate model call, so cost scales with the number of roles.
+
+## Minimal example (the shape, not the full code)
 
 ```ts
 const plan = {
@@ -83,18 +86,6 @@ const plan = {
 }
 ```
 
-## Pitfalls
-- **Don't fake MoA with one model** — role-playing N experts is prompt engineering, not MoA.
-- **Validate before execute** — unknown/disabled expert or model outside `allowedModels` → fail fast.
-- **Architecture ≠ implementation** — integrate with your existing orchestrator (Planner/Executor/Judge/Synthesizer), don't re-implement them.
-- **Fact-check model output** — the judge verifies against docs; experts hallucinate API names.
-- **Heterogeneous models ≠ one sharded model** — each worker keeps its own model locally; you exchange prompts/results (KB), never weights.
+## Request for verification
 
-## Real example (coder → critic → judge)
-
-Task: `parseClusterConfig(json)` — parse + validate a cluster config.
-1. **Coder** (local Qwen 27B) produced clean field validation — but no uniqueness, no reserved-IP check.
-2. **Critic** (a different model) found 8 issues (duplicate names/IPs, `0.0.0.0`/`127.x` passing, array-as-element).
-3. **Synthesis** produced the fixed, production-grade version.
-
-Result: the combination beat either model alone — the coder's speed + the critic's different blind spot = better than one model doing both.
+This is a draft extracted from a long design conversation and re-assembled. If you try it: does the per-expert assignment actually improve your results vs a single model? Does the judge catch real bugs? Please open an issue with your before/after — especially on tasks where you *expected* a single strong model to be enough.
