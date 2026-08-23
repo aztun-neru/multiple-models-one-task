@@ -1,52 +1,20 @@
 # Multiple Models, One Task
 
-**Run ONE task through MULTIPLE specialized models in parallel — a coder model writes code, a strong generalist critiques it, a reasoner synthesizes — then a judge checks before it reaches you.**
+Run one task through multiple specialized models — researcher, coder, critic, judge, synthesizer — each on a different model, with a consensus gate before the answer reaches you.
 
-A single LLM told to "act as coder, then reviewer, then judge" is still ONE model with ONE blind spot. When the coder and the reviewer are the same weights, the reviewer can't catch what the coder missed. This project makes the experts *real* — each role runs on the model actually good at that role.
+The full operating manual is in [`SKILL.md`](SKILL.md). The reference material (complete orchestration doctrine, the full example corpus, and the API reference) is in [`references/`](references/). A compiling TypeScript implementation is in [`src/`](src/).
 
-```
-                        TASK
-                          │
-        ┌─────────────────┼─────────────────┐
-        ▼                 ▼                 ▼
-   RESEARCH          CODER            CRITIC
-  reasoner-model    coder-model    strong-generalist
-        │                 │                 │
-        └─────────────────┼─────────────────┘
-                          ▼
-                       JUDGE
-                          │
-                          ▼
-                      SYNTHESIS → final answer
-```
+## Layout
 
-![diagram](diagram.svg)
+- `SKILL.md` — the operating manual: why this exists, the two-layer architecture, every module, the orchestration doctrine, a minimal working example, pitfalls, and the verification commands that were actually run.
+- `references/architecture.md` — the complete doctrine: task lifecycle, state machine, roles, evidence rules, consensus gates, memory.
+- `references/examples.md` — the full example corpus: role prompts, evidence packs, routing decisions, JSON schemas, disagreements.
+- `references/api-reference.md` — every export in `src/`.
+- `src/` — 20 TypeScript files; `tsc --noEmit` passes with `--strict`.
 
-## The point
+## Verification
 
-| | One model doing everything | Multiple models + judge |
-|---|---|---|
-| Code review | nobody checks | critic finds real bugs before you ship |
-| Blind spots | one model's weakness = your bug | a different model catches it |
-
-In one real run: a local coder model wrote clean validation, a second model found 8 problems it missed (duplicate machines, reserved IPs), synthesis fixed them. **The combination beat either model alone.**
-
-## Contents
-
-- `SKILL.md` — the full skill (context, concept, architecture, pitfalls, when-not-to-use, minimal example)
-- `src/` — reference TypeScript implementation (20 files, compiles with `tsc --noEmit` = 0 errors)
-- `diagram.svg` — dark SVG diagram
-- `docs.md` / `examples.md` / `tests.md` — architecture notes, usage examples, test cases (extracted raw)
-
-## Install the skill
-
-```bash
-cp SKILL.md ~/.hermes/skills/multiple-models-one-task/
-```
-
-## Verification request
-
-This is a draft re-assembled from a long design conversation. If you try it: does per-expert assignment actually beat a single model? Does the judge catch real bugs? Open an issue with your before/after.
+If you try this: does per-expert assignment beat a single model? Does the judge catch real bugs? Open an issue with your before/after — especially on tasks where you *expected* one strong model to be enough.
 
 ## License
 
