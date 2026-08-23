@@ -48,6 +48,9 @@ Task: `parseClusterConfig(json)` — parse + validate a cluster config.
 
 - `SKILL.md` — the full skill (architecture, per-expert assignment, execution modes, pitfalls)
 - `references/diagram-prompt.md` — a prompt to generate the diagram with a local image model (SDXL/Flux/ComfyUI)
+- `diagram.svg` — ready-to-use dark SVG diagram (below)
+
+![Mixture-of-Agents diagram](diagram.svg)
 
 ## Install
 

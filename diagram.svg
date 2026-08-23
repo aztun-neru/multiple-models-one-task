@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="640" viewBox="0 0 1000 640" font-family="ui-monospace, SF Mono, Menlo, monospace">
+  <rect width="1000" height="640" fill="#0a0e15"/>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#151c29" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowCyan" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#22d3ee"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="640" fill="url(#grid)"/>
+
+  <!-- arrows: TASK -> experts -->
+  <path d="M 450 90 L 250 150" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 450 90 L 450 150" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 450 90 L 650 150" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- arrows: experts -> model chips -->
+  <path d="M 250 210 L 250 235" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 450 210 L 450 235" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 650 210 L 650 235" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- arrows: model chips -> judge -->
+  <path d="M 250 280 C 250 320 400 330 440 350" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 450 280 L 450 350" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 650 280 C 650 320 500 330 460 350" stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- judge -> synthesis -> answer -->
+  <path d="M 450 400 L 450 440" stroke="#22d3ee" stroke-width="2" fill="none" marker-end="url(#arrowCyan)"/>
+  <path d="M 450 500 L 450 540" stroke="#22d3ee" stroke-width="2" fill="none" marker-end="url(#arrowCyan)"/>
+
+  <!-- TASK -->
+  <rect x="370" y="40" width="160" height="50" rx="8" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="450" y="70" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="bold">TASK</text>
+
+  <!-- experts -->
+  <rect x="160" y="160" width="180" height="50" rx="8" fill="rgba(30,64,175,0.35)" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="250" y="190" text-anchor="middle" fill="#bfdbfe" font-size="14" font-weight="bold">RESEARCH</text>
+
+  <rect x="410" y="160" width="180" height="50" rx="8" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="500" y="190" text-anchor="middle" fill="#a7f3d0" font-size="14" font-weight="bold">CODER</text>
+
+  <rect x="660" y="160" width="180" height="50" rx="8" fill="rgba(120,53,15,0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="750" y="190" text-anchor="middle" fill="#fde68a" font-size="14" font-weight="bold">CRITIC</text>
+
+  <!-- model chips -->
+  <rect x="160" y="240" width="180" height="40" rx="6" fill="#0f172a" stroke="#3b82f6" stroke-width="1"/>
+  <text x="250" y="265" text-anchor="middle" fill="#93c5fd" font-size="11">reasoner-model</text>
+
+  <rect x="410" y="240" width="180" height="40" rx="6" fill="#0f172a" stroke="#10b981" stroke-width="1"/>
+  <text x="500" y="265" text-anchor="middle" fill="#6ee7b7" font-size="11">coder-model</text>
+
+  <rect x="660" y="240" width="180" height="40" rx="6" fill="#0f172a" stroke="#f59e0b" stroke-width="1"/>
+  <text x="750" y="265" text-anchor="middle" fill="#fcd34d" font-size="11">strong-generalist</text>
+
+  <!-- JUDGE diamond -->
+  <polygon points="450,340 510,380 450,420 390,380" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="450" y="385" text-anchor="middle" fill="#ddd6fe" font-size="14" font-weight="bold">JUDGE</text>
+
+  <!-- SYNTHESIS -->
+  <rect x="360" y="440" width="180" height="50" rx="8" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="450" y="470" text-anchor="middle" fill="#a5f3fc" font-size="14" font-weight="bold">SYNTHESIS</text>
+
+  <!-- ANSWER -->
+  <rect x="360" y="540" width="180" height="50" rx="8" fill="#0f172a" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="450" y="570" text-anchor="middle" fill="#f1f5f9" font-size="14" font-weight="bold">ANSWER</text>
+
+  <!-- legend / annotation -->
+  <text x="500" y="620" text-anchor="middle" fill="#64748b" font-size="10">each arrow = a genuinely different model · per-expert assignment, not one model role-playing</text>
+</svg>
