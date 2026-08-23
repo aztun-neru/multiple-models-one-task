@@ -1,21 +1,54 @@
 # Multiple Models, One Task
 
-Run one task through multiple specialized models — researcher, coder, critic, judge, synthesizer — each on a different model, with a consensus gate before the answer reaches you.
+**Your LLM reviews its own code — and misses the same bugs it wrote. This splits one task across *different* models so a coder writes, a critic catches, a judge checks. No single model's blind spot becomes your bug.**
 
-The full operating manual is in [`SKILL.md`](SKILL.md). The reference material (complete orchestration doctrine, the full example corpus, and the API reference) is in [`references/`](references/). A compiling TypeScript implementation is in [`src/`](src/).
+```
+                        TASK
+                          │
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+   RESEARCH          CODER            CRITIC
+  reasoner-model    coder-model    strong-generalist
+        │                 │                 │
+        └─────────────────┼─────────────────┘
+                          ▼
+                       JUDGE   ← verifies against the task
+                          │
+                          ▼
+                      SYNTHESIS → final answer
+```
 
-## Layout
+![diagram](diagram.svg)
 
-- `SKILL.md` — the operating manual: why this exists, the two-layer architecture, every module, the orchestration doctrine, a minimal working example, pitfalls, and the verification commands that were actually run.
-- `references/architecture.md` — the complete doctrine: task lifecycle, state machine, roles, evidence rules, consensus gates, memory.
-- `references/examples.md` — the full example corpus: role prompts, evidence packs, routing decisions, JSON schemas, disagreements.
-- `references/api-reference.md` — every export in `src/`.
-- `src/` — 20 TypeScript files; `tsc --noEmit` passes with `--strict`.
+## Why this matters
 
-## Verification
+One model doing everything is one set of blind spots. In a real run:
 
-If you try this: does per-expert assignment beat a single model? Does the judge catch real bugs? Open an issue with your before/after — especially on tasks where you *expected* one strong model to be enough.
+```typescript
+// coder produced this — clean field validation
+// critic (a DIFFERENT model) caught what it missed:
+//   ✗ duplicate machines allowed
+//   ✗ 0.0.0.0 / 127.0.0.1 accepted as machine IPs
+//   ✗ array-as-element gives a misleading error
+// synthesis produced the fixed, production-grade version
+```
 
-## License
+The critic found 8 real issues the coder couldn't see — because they're **different models, not one model role-playing.**
+
+## What you get
+
+- **Per-expert model assignment** — coder runs a coding model, critic a generalist, judge a reasoner. Not one model pretending.
+- **Dependency graph** — experts run in parallel, respect `dependsOn`, converge on a judge.
+- **Consensus gate** — nothing reaches you without passing the judge.
+- **Compiling reference implementation** — `src/`, 20 files, `tsc --strict` passes.
+
+## Read the manual
+
+- **[SKILL.md](SKILL.md)** — the operating manual (architecture, doctrine, working example, pitfalls)
+- **[references/](references/)** — full doctrine (106KB) + example corpus + API reference
+
+## Try it, then tell us
+
+Does per-expert assignment actually beat one strong model? Does the judge catch real bugs? Open an issue with your before/after.
 
 MIT
