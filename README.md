@@ -14,22 +14,6 @@ That is the entire idea behind this project: instead of one model playing every 
 
 A task enters through a **planner**, which decomposes it into roles. A typical decomposition for a coding task is three experts: a **researcher** that surveys the problem and the relevant patterns, a **coder** that produces the implementation, and a **critic** that attacks the result. Each expert is wired to a different model — the coder to a model that is strong at code, the critic to a strong generalist with different training, and so on.
 
-```
-                        TASK
-                          │
-        ┌─────────────────┼─────────────────┐
-        ▼                 ▼                 ▼
-   RESEARCH          CODER            CRITIC
-  reasoner-model    coder-model    strong-generalist
-        │                 │                 │
-        └─────────────────┼─────────────────┘
-                          ▼
-                       JUDGE      ← checks against the task
-                          │
-                          ▼
-                      SYNTHESIS → final answer
-```
-
 ![Multiple Models, One Task — architecture](diagram.svg)
 
 The experts do not run in a fixed order. Each expert declares its dependencies (`dependsOn`) and a priority, and the engine runs them in one of three modes: **sequential** (one after another), **parallel** (all at once), or **hybrid** (respect the dependencies, run everything independent in parallel up to a concurrency limit). A dependency cycle or a reference to a missing expert fails immediately rather than hanging.
