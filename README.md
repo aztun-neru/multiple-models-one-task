@@ -1,101 +1,572 @@
 # Multiple Models, One Task
 
-Run one task through several *specific* language models — a Qwen for code, a GLM or Claude for critique, a DeepSeek for research — and combine their answers through a judge so no single model's blind spot survives into the result.
+### Different models. Different blind spots. One verified result.
 
-This repo exists because one model doing everything is one set of blind spots. When the coder and the reviewer are the same weights, the reviewer misses exactly what the coder missed. The fix is not a better prompt — it is giving each role to a genuinely different model. Below, the concrete setup this was built and tested against.
+A task is decomposed into specialized roles and executed by different language models — each chosen for what it does best.
 
-## The models, concretely
+Research is handled by one model.
+Code by another.
+Critique by another.
 
-The assignment is per-role, and it uses real models — not placeholders:
+A separate **Judge** evaluates the results against the original task, and only validated work reaches the final **Synthesis** stage.
 
-| Role | Model | Why it |
-|---|---|---|
-| **CODER** | Qwen3.8-27B (local, dense) | a dense 27B that is strong at code; runs at 122–256 tok/s on a single RTX 3090 via vLLM |
-| **CRITIC** | GLM-5.2 (OpenRouter) | a different family and training set, so its blind spots don't overlap the coder's |
-| **RESEARCHER** | DeepSeek (reasoner) | strong at surveying a problem and the relevant patterns before code is written |
-| **JUDGE** | Claude (or DeepSeek) | checks each answer against the task, not against the other experts |
-| **SYNTHESIS** | a strong generalist | combines the judged answers into one final result |
+> **The goal is not to make one model do everything better.**
+>
+> **The goal is to stop one model from being the only model looking at the problem.**
 
-```
-                        TASK
-                          │
-        ┌─────────────────┼─────────────────┐
-        ▼                 ▼                 ▼
-   RESEARCH          CODER            CRITIC
-    DeepSeek       Qwen3.8-27B        GLM-5.2
-        │                 │                 │
-        └─────────────────┼─────────────────┘
-                          ▼
-                       JUDGE   (Claude / DeepSeek)
-                          │
-                          ▼
-                      SYNTHESIS → final answer
+---
+
+## The core idea
+
+Most LLM systems look roughly like this:
+
+```text
+                         TASK
+                           │
+                           ▼
+                      ONE MODEL
+                           │
+                           ▼
+                      FINAL ANSWER
 ```
 
-![Multiple Models, One Task — architecture](diagram.svg)
+That architecture has a fundamental limitation:
 
-The point of the table and the diagram is that the models are **different** — different families, different training, different failure modes. Two copies of the same weights still share the same blind spot no matter how many roles you hand them. The whole value of this pattern depends on the models being genuinely unlike each other.
+**the same model that makes the decision is also responsible for detecting its own mistakes.**
 
-## How it works
+Multiple Models, One Task uses a different approach:
 
-A task enters through a planner, which decomposes it into roles and writes a per-role instruction. The experts declare dependencies (`dependsOn`) and priorities, and the engine runs them **sequential**, **parallel**, or **hybrid** (dependencies respected, independent experts in parallel up to a concurrency limit). A dependency cycle or a missing expert fails immediately instead of hanging.
+```text
+                              TASK
+                                │
+                ┌───────────────┼───────────────┐
+                │               │               │
+                ▼               ▼               ▼
+           RESEARCH           CODING          CRITIQUE
+           DeepSeek        Qwen3.8-27B        GLM-5.2
+                │               │               │
+                └───────────────┼───────────────┘
+                                │
+                                ▼
+                              JUDGE
+                         Claude / DeepSeek
+                                │
+                         ┌──────┴──────┐
+                         │             │
+                       PASS           FAIL
+                         │             │
+                         ▼             ▼
+                     SYNTHESIS       REJECT
+                         │
+                         ▼
+                    FINAL RESULT
+```
 
-After the experts answer, a judge evaluates each answer against the original task. Only answers that pass reach the synthesis step, which combines them into one final answer. The judge is the gate — nothing reaches the user without passing it.
+The important part is not simply **multiple models**.
 
-## What it caught in practice
+It is **different models performing different cognitive roles**.
 
-A concrete run: a `parseClusterConfig` function that parses and validates a cluster config.
+---
 
-The coder (Qwen3.8-27B) produced a clean, working implementation — IPv4 syntax with leading-zero rejection, role enum, non-negative integer GPU count, indexed error messages. On its own it looked finished.
+## Why different models?
 
-The critic (GLM-5.2) then found eight problems the coder had not seen:
+Running the same model three times does not create three independent perspectives.
 
-1. **Duplicate machines allowed** — two entries with the same name or IP pass; a routing conflict in a real cluster.
-2. **Reserved addresses accepted** — `0.0.0.0`, `127.0.0.1`, `255.255.255.255` pass as machine IPs.
-3. **Array slips past the object check** — `typeof [] === "object"`, so an array passes and fails later with a misleading error.
-4. **Unsafe cast** — `as Record<string, unknown>` applied before type validation.
-5. **Whitespace leak** — name validated after `trim()` but stored raw.
-6. **No orchestrator required** — an empty cluster, or one with no orchestrator, passes.
-7. **Misleading error** — "Invalid JSON" when the JSON was fine and the shape was wrong.
-8. **Dead code and missing bounds** — unreachable `num < 0`, no upper bound on GPU count.
+If the model has a blind spot, all three instances may share it.
 
-The synthesis applied the fixes. The result was production-grade, and neither model alone produced it: the coder did not see the gaps, and the critic would not have written the code as fast. Different blind spots beat one model doing both jobs.
+The system therefore supports per-role model assignment:
 
-## The architecture in detail
+| Role           | Model             | Purpose                                               |
+| -------------- | ----------------- | ----------------------------------------------------- |
+| **Researcher** | DeepSeek Reasoner | Explore the problem, patterns and relevant approaches |
+| **Coder**      | Qwen3.8-27B       | Produce concrete implementation                       |
+| **Critic**     | GLM-5.2           | Challenge assumptions and find weaknesses             |
+| **Judge**      | Claude / DeepSeek | Evaluate results against the original task            |
+| **Synthesis**  | Strong generalist | Combine validated results into the final answer       |
 
-Two layers. The **composition layer** decides what runs: Planner (decompose the task), Expert Registry (experts with `allowedModels` and `enabled`), Model Assignment (per-expert, not global), Dependency Graph (`dependsOn` + `priority`, cycle detection), Execution (parallel/sequential/hybrid), Judge (evaluate against the task), Synthesis (combine), plus Policy, Observability, and Evaluation around them.
+The exact models are configurable. The architecture does not depend on one provider.
 
-The **runtime layer** decides where it runs: Model Registry (available models and cost), Resource Placement (GPU/RAM/CPU/cloud), Auto GPU tuning (quant and context per hardware), Benchmarking (tok/s and quality per model), and backends (llama.cpp, Ollama, cloud APIs).
+---
 
-The reference implementation is twenty TypeScript files in `src/` and compiles under `tsc --strict`. The full doctrine, example corpus, and API reference are in `references/` and `SKILL.md`.
+# How it works
 
-## A minimal plan
+A task enters the system through a **Planner**.
+
+The planner decomposes it into expert roles and creates instructions for each one.
+
+Experts can declare:
+
+* dependencies
+* priorities
+* execution constraints
+* allowed models
+
+The execution engine then determines what can run in parallel and what must wait.
+
+```text
+                    ┌──────────────┐
+                    │     TASK     │
+                    └──────┬───────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │    PLANNER   │
+                    └──────┬───────┘
+                           │
+             ┌─────────────┼─────────────┐
+             ▼             ▼             ▼
+        RESEARCH         CODER        CRITIC
+             │             │             │
+             └─────────────┼─────────────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │     JUDGE    │
+                    └──────┬───────┘
+                           │
+                    ┌──────┴──────┐
+                    │             │
+                   PASS          FAIL
+                    │             │
+                    ▼             ▼
+               SYNTHESIS       REJECT
+                    │
+                    ▼
+              FINAL ANSWER
+```
+
+Execution supports:
+
+* **Sequential** execution
+* **Parallel** execution
+* **Hybrid** execution with dependencies respected
+* Concurrency limits
+* Dependency validation
+* Cycle detection
+* Immediate failure on invalid plans
+
+A dependency cycle should fail immediately rather than leave the system waiting indefinitely.
+
+---
+
+# The Judge is a gate
+
+The Judge does not simply compare answers with each other.
+
+It evaluates each result against the **original task**.
+
+This distinction matters.
+
+```text
+                ORIGINAL TASK
+                     │
+                     │
+          ┌──────────┼──────────┐
+          ▼          ▼          ▼
+       ANSWER A   ANSWER B   ANSWER C
+          │          │          │
+          ▼          ▼          ▼
+       ┌──────────────────────────┐
+       │           JUDGE          │
+       │                          │
+       │ Does this satisfy the    │
+       │ actual task requirements?│
+       └────────────┬─────────────┘
+                    │
+             ┌──────┴──────┐
+             ▼             ▼
+           PASS           FAIL
+             │             │
+             ▼             ▼
+         SYNTHESIS       REJECT
+```
+
+Only validated results are allowed into synthesis.
+
+This prevents a plausible-looking but incorrect expert response from automatically becoming part of the final answer.
+
+---
+
+# A real example
+
+The system was tested against a `parseClusterConfig` implementation.
+
+The coder produced an implementation that looked complete.
+
+It handled:
+
+* IPv4 syntax
+* leading-zero rejection
+* role validation
+* non-negative GPU counts
+* indexed validation errors
+
+A single-model workflow could reasonably have stopped there.
+
+The independent critic found additional problems.
+
+### 8 issues missed by the coder
+
+```text
+01  Duplicate machines were allowed
+02  Reserved IP addresses were accepted
+03  Arrays could pass the object check
+04  An unsafe type cast happened before validation
+05  Whitespace could leak into stored names
+06  An empty cluster could pass
+07  An orchestrator was not required
+08  Error messages did not always describe the real failure
+```
+
+The critic also identified dead validation logic and missing bounds.
+
+The synthesis stage incorporated the corrections.
+
+The important result was not that one model was "bad".
+
+The important result was that:
+
+> **the coder and critic failed differently.**
+
+That is exactly the property this architecture is designed to exploit.
+
+---
+
+# Architecture
+
+The system is split into two major layers.
+
+## Composition layer
+
+The composition layer decides **what should happen**.
+
+```text
+┌─────────────────────────────────────────────┐
+│              COMPOSITION LAYER              │
+│                                             │
+│  Planner                                    │
+│  Expert Registry                            │
+│  Model Assignment                           │
+│  Dependency Graph                           │
+│  Execution Engine                            │
+│  Judge                                       │
+│  Synthesis                                   │
+│  Policy                                      │
+│  Observability                              │
+│  Evaluation                                  │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+### Planner
+
+Decomposes the task into expert roles.
+
+### Expert Registry
+
+Defines available experts, their capabilities and allowed models.
+
+### Model Assignment
+
+Assigns a model **per expert**, rather than globally.
+
+### Dependency Graph
+
+Controls relationships between expert tasks.
+
+Supports:
+
+```text
+dependsOn
+priority
+cycle detection
+```
+
+### Execution
+
+Supports sequential, parallel and hybrid execution.
+
+### Judge
+
+Validates expert outputs against the original task.
+
+### Synthesis
+
+Combines validated results into the final result.
+
+---
+
+## Runtime layer
+
+The runtime layer decides **where and how the work runs**.
+
+```text
+┌─────────────────────────────────────────────┐
+│                 RUNTIME LAYER               │
+│                                             │
+│  Model Registry                             │
+│  Resource Placement                         │
+│  GPU / RAM / CPU                            │
+│  Automatic GPU tuning                       │
+│  Quantization / Context                     │
+│  Benchmarking                               │
+│  llama.cpp                                  │
+│  Ollama                                     │
+│  Cloud APIs                                 │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+This separation means the cognitive architecture does not need to know exactly where a model runs.
+
+A model can be:
+
+* local
+* GPU accelerated
+* CPU based
+* hosted through an API
+* served through llama.cpp
+* served through Ollama
+
+---
+
+# Per-expert model assignment
+
+Model selection is deliberately not global.
+
+For example:
 
 ```ts
 const plan = {
   task: "Analyze the architecture and propose improvements.",
+
   executionMode: "hybrid",
+
   experts: [
-    { id: "research", expertId: "researcher", instruction: "Analyze existing patterns." },
-    { id: "coder",    expertId: "coder",      instruction: "Identify concrete code changes." },
-    { id: "critic",   expertId: "critic",     instruction: "Find weaknesses.", dependsOn: ["research", "coder"] },
+    {
+      id: "research",
+      expertId: "researcher",
+      instruction: "Analyze existing patterns."
+    },
+
+    {
+      id: "coder",
+      expertId: "coder",
+      instruction: "Identify concrete code changes."
+    },
+
+    {
+      id: "critic",
+      expertId: "critic",
+      instruction: "Find weaknesses.",
+      dependsOn: ["research", "coder"]
+    }
   ],
+
   assignments: [
-    { expertId: "researcher", modelId: "deepseek-reasoner" },
-    { expertId: "coder",      modelId: "qwen3.8-27b" },
-    { expertId: "critic",     modelId: "glm-5.2" },
+    {
+      expertId: "researcher",
+      modelId: "deepseek-reasoner"
+    },
+
+    {
+      expertId: "coder",
+      modelId: "qwen3.8-27b"
+    },
+
+    {
+      expertId: "critic",
+      modelId: "glm-5.2"
+    }
   ],
+
   judgeExpertId: "judge",
-  synthesisExpertId: "synthesis",
+  synthesisExpertId: "synthesis"
 };
 ```
 
-## When not to use it
+The architecture therefore separates:
 
-**Single-step, low-risk tasks** don't justify the extra calls, latency, and cost. **Sensitive data without isolation** is a poor fit — routing PII across several models multiplies exposure. **Tight budgets** are a poor fit — every expert is a separate call. And this only helps with *different* models: two copies of the same weights are still the same blind spot.
+```text
+WHAT SHOULD BE DONE
+        │
+        ▼
+     EXPERT
+        │
+        ▼
+WHICH MODEL SHOULD DO IT
+        │
+        ▼
+    EXECUTION
+```
 
-## Try it and tell us
+This makes model replacement possible without redesigning the task architecture.
 
-Does per-expert assignment with a judge beat one strong model on your task? Does the critic catch real bugs the coder would have shipped? Open an issue with your before-and-after.
+---
+
+# Why not just use one bigger model?
+
+A larger model can absolutely be better.
+
+And this architecture does **not** claim that multiple models are always superior.
+
+There are real trade-offs:
+
+| Approach                    | Advantage                | Cost                         |
+| --------------------------- | ------------------------ | ---------------------------- |
+| One model                   | Simple, fast, cheap      | Shared blind spots           |
+| Same model × multiple calls | More attempts            | Usually shared failure modes |
+| Multiple different models   | Independent perspectives | More latency and cost        |
+| Multi-model + Judge         | Validation + diversity   | Highest complexity           |
+
+For simple tasks, a single strong model is usually the correct engineering choice.
+
+For high-value or failure-sensitive tasks, additional independent reasoning can justify the overhead.
+
+---
+
+# When this architecture makes sense
+
+Good candidates include:
+
+* complex software engineering
+* architecture reviews
+* code generation + review
+* security analysis
+* research-heavy tasks
+* technical decision making
+* large refactoring
+* configuration validation
+* tasks where silent errors are expensive
+
+Poor candidates include:
+
+* trivial questions
+* simple transformations
+* low-risk single-step tasks
+* latency-critical requests
+* workloads where additional model calls are not justified
+
+Sensitive information also requires careful isolation because sending the same data to multiple models can increase the exposure surface.
+
+---
+
+# What this project is really about
+
+This is not primarily a "multi-agent" framework.
+
+It is an attempt to separate several things that are often mixed together:
+
+```text
+TASK
+ │
+ ├── decomposition
+ │
+ ├── expertise
+ │
+ ├── model selection
+ │
+ ├── execution
+ │
+ ├── independent evaluation
+ │
+ └── synthesis
+```
+
+The central design principle is:
+
+> **Different cognitive roles should not automatically share the same model.**
+
+And a second principle follows:
+
+> **The model producing an answer should not be the only model deciding whether that answer is good enough.**
+
+---
+
+# Repository
+
+```text
+multiple-models-one-task/
+│
+├── src/
+│   └── TypeScript implementation
+│
+├── references/
+│   └── architecture and reference material
+│
+├── README.md
+├── SKILL.md
+├── diagram.svg
+├── docs.md
+├── examples.md
+└── tests.md
+```
+
+The reference implementation currently consists of the core TypeScript architecture under `src/`, with the broader doctrine, examples and API material separated into the supporting documentation.
+
+---
+
+# Implementation status
+
+The reference implementation currently covers:
+
+* task planning
+* expert registration
+* per-expert model assignment
+* dependency graphs
+* execution modes
+* concurrency control
+* cycle detection
+* judging
+* synthesis
+* policy
+* observability
+* evaluation
+* runtime model registry
+* resource placement
+* hardware-aware tuning
+* benchmarking
+* local and cloud backends
+
+The implementation is TypeScript and is designed to compile under strict TypeScript settings.
+
+---
+
+# Try the pattern
+
+Start with a task that is difficult enough for independent perspectives to matter.
+
+For example:
+
+```text
+"Review this parser implementation for correctness,
+security issues, edge cases and architectural problems."
+```
+
+Then assign:
+
+```text
+RESEARCHER → investigate known patterns and failure modes
+
+CODER      → inspect the implementation and propose fixes
+
+CRITIC     → independently attack the proposed solution
+
+JUDGE      → evaluate every result against the original task
+
+SYNTHESIS  → produce the final validated result
+```
+
+The interesting question is not:
+
+> "Which model is smartest?"
+
+It is:
+
+> **"What happens when models with different strengths and different failure modes are forced to evaluate the same problem from different directions?"**
+
+---
+
+# License
 
 MIT
