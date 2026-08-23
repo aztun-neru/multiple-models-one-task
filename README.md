@@ -20,15 +20,7 @@ A separate **Judge** evaluates the results against the original task, and only v
 
 Most LLM systems look roughly like this:
 
-```text
-                         TASK
-                           │
-                           ▼
-                      ONE MODEL
-                           │
-                           ▼
-                      FINAL ANSWER
-```
+![One model](onemodel.svg)
 
 That architecture has a fundamental limitation:
 
@@ -36,31 +28,7 @@ That architecture has a fundamental limitation:
 
 Multiple Models, One Task uses a different approach:
 
-```text
-                              TASK
-                                │
-                ┌───────────────┼───────────────┐
-                │               │               │
-                ▼               ▼               ▼
-           RESEARCH           CODING          CRITIQUE
-           DeepSeek        Qwen3.8-27B        GLM-5.2
-                │               │               │
-                └───────────────┼───────────────┘
-                                │
-                                ▼
-                              JUDGE
-                         Claude / DeepSeek
-                                │
-                         ┌──────┴──────┐
-                         │             │
-                       PASS           FAIL
-                         │             │
-                         ▼             ▼
-                     SYNTHESIS       REJECT
-                         │
-                         ▼
-                    FINAL RESULT
-```
+![Architecture](diagram.svg)
 
 The important part is not simply **multiple models**.
 
@@ -103,37 +71,7 @@ Experts can declare:
 
 The execution engine then determines what can run in parallel and what must wait.
 
-```text
-                    ┌──────────────┐
-                    │     TASK     │
-                    └──────┬───────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │    PLANNER   │
-                    └──────┬───────┘
-                           │
-             ┌─────────────┼─────────────┐
-             ▼             ▼             ▼
-        RESEARCH         CODER        CRITIC
-             │             │             │
-             └─────────────┼─────────────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │     JUDGE    │
-                    └──────┬───────┘
-                           │
-                    ┌──────┴──────┐
-                    │             │
-                   PASS          FAIL
-                    │             │
-                    ▼             ▼
-               SYNTHESIS       REJECT
-                    │
-                    ▼
-              FINAL ANSWER
-```
+![Workflow](diagram.svg)
 
 Execution supports:
 
@@ -157,29 +95,7 @@ It evaluates each result against the **original task**.
 
 This distinction matters.
 
-```text
-                ORIGINAL TASK
-                     │
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-       ANSWER A   ANSWER B   ANSWER C
-          │          │          │
-          ▼          ▼          ▼
-       ┌──────────────────────────┐
-       │           JUDGE          │
-       │                          │
-       │ Does this satisfy the    │
-       │ actual task requirements?│
-       └────────────┬─────────────┘
-                    │
-             ┌──────┴──────┐
-             ▼             ▼
-           PASS           FAIL
-             │             │
-             ▼             ▼
-         SYNTHESIS       REJECT
-```
+![Judge gate](judge.svg)
 
 Only validated results are allowed into synthesis.
 
