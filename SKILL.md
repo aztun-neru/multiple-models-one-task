@@ -1,9 +1,9 @@
 ---
-name: multiple-models-one-task
-description: Run ONE task through MULTIPLE specialized experts — researcher, independent architecture candidates, adversarial critic, judge, synthesizer — with per-expert model assignment, staged parallel/sequential execution, evidence verification and a consensus gate, so no single model's blind spot becomes your bug. Use when a coding/architecture task is high-risk, when one model both writes and approves its own work, when hallucinated APIs must be caught before merge, or when comparing independent candidates beats one confident answer. NOT for trivial single-step tasks.
+name: different-minds-one-task
+description: "Run one task through models from DIFFERENT families — researcher, coder, critic, judge, synthesizer, each from another family (Qwen, GLM, Claude, DeepSeek), NOT different quantizations of the same model. Different quantizations share the same weights and the same blind spot; independence comes only from different families. Decompose a task into roles, assign each role a different family, gate the result through a judge, synthesize. Use when you don't want one model to be the only one approving its own work. NOT for trivial single-step tasks."
 ---
 
-# Multiple Models, One Task — Composition Engine + Orchestration Doctrine
+# Different Minds, One Task — Composition Engine + Orchestration Doctrine
 
 Complete skill for the NERU/Hermes MoA system. Source of truth:
 the `moa/` package — `src/` (compiling TypeScript,
@@ -19,6 +19,14 @@ This SKILL.md is the operating manual; `references/` holds the full material.
   in `src/`, plus the ports you must implement to wire real models.
 
 ---
+
+## What counts as a different model (read this first)
+
+**Different quantizations of the SAME model do NOT count as different models.** Qwen Q4, Q8 and Q2 have the same weights, only different precision — the same knowledge, the same tendency to the same errors, the same blind spot. Quantization changes the file size, not the blind spots.
+
+Independence comes only from a **different family** (Qwen vs GLM vs Claude vs DeepSeek): different training, different data, different ways of failing. Only then can the critic catch what the coder misses — because their blind spots don't overlap.
+
+The whole value of this system depends on the models being genuinely unlike each other. Two copies of the same weights — in any precision — are still the same mind.
 
 ## 1. WHY THIS EXISTS — the problem, in full
 

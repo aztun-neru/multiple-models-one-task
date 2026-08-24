@@ -1,8 +1,8 @@
-# Multiple Models, One Task
+# Different Minds, One Task
 
-### Different models. Different blind spots. One verified result.
+### Different families. Different blind spots. One verified result.
 
-A task is decomposed into specialized roles and executed by different language models — each chosen for what it does best.
+A task is decomposed into specialized roles and executed by models from **different families** — each chosen for what it does best. Different quantizations of one model don't count: they share the same weights and the same blind spot. Independence comes from different families.
 
 Research is handled by one model.
 Code by another.
@@ -36,11 +36,15 @@ It is **different models performing different cognitive roles**.
 
 ---
 
-## Why different models?
+## Why different families?
 
 Running the same model three times does not create three independent perspectives.
 
 If the model has a blind spot, all three instances may share it.
+
+The same holds for different quantizations of one model. Qwen Q4, Q8 and Q2 have the same weights, only different precision — the same knowledge, the same blind spot. Quantization changes the file size, not the way the model fails.
+
+Independence requires a different **family**: Qwen vs GLM vs Claude vs DeepSeek — different training, different data, different ways of failing.
 
 The system therefore supports per-role model assignment:
 
