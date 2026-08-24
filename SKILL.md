@@ -520,6 +520,18 @@ first plan.
   only ever need one canonical transformation with a verified input
   schema, a single pass + compiler check is the right size.
 
+## If you already have a model router — skip the runtime layer
+
+The runtime layer (Model Registry, Resource Placement, Benchmarking) is **OPTIONAL**. If your system already routes models — like NERU's `ModelOrchestrator` (L1/L2/L3, cost/latency routing, circuit breaker, failover) — do **not** implement it: it duplicates your router.
+
+Integrate as a thin layer on top:
+
+1. Implement only the `ModelRouter` port as an adapter that calls your router: `ModelOrchestrator.run(prompt, { preferLayer, requiresStructured })`.
+2. Treat `Expert.modelId` as a **routing hint** (the role), not a hard pin — the router picks the actual model per call.
+3. Drop `health()` — your router's circuit breaker already handles health/failover.
+
+Reference adapter: `NeruModelRouterAdapter` (NERU repo) does exactly this — composition is the value, runtime is delegated to the router.
+
 ## 8. VERIFY (commands that were actually run)
 
 ```bash
